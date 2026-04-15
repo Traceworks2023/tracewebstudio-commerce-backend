@@ -1,18 +1,23 @@
-//! Tracewebstudio Commerce Backend
-//! 
-//! E-commerce backend for products, orders, cart, checkout, payments.
-//!
-//! Phase 2: Direct tenant payment model with Easebuzz
-
 use axum::{
-    routing::{get, post},
+    routing::{get, post, put, delete},
     Router,
+    middleware as axum_middleware,
 };
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+mod handlers;
+mod middleware;
+mod models;
+mod services;
+
+use services::run_migrations;
+use middleware::tenant_isolation_middleware;
 
 #[derive(Clone)]
 pub struct AppState {
-    // TODO: Add database pool
+    pub db: Arc<sqlx::PgPool>,
 }
 
 #[tokio::main]
@@ -28,43 +33,134 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     dotenvy::dotenv().ok();
     
-    let state = AppState {};
+    let database_url = std::env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    
+    let pool = PgPoolOptions::new()
+        .max_connections(10)
+        .connect(&database_url)
+        .await?;
+    
+    tracing::info!("Connected to PostgreSQL");
+    
+    run_migrations(&pool).await?;
+    
+    let state = Arc::new(AppState { db: Arc::new(pool) });
     
     let app = Router::new()
         .route("/health", get(health_check))
         // Products
-        .route("/api/v1/products", post(create_product))
-        .route("/api/v1/products", get(list_products))
-        .route("/api/v1/products/:id", get(get_product))
-        .route("/api/v1/products/:id", put(update_product))
-        .route("/api/v1/products/:id", delete(delete_product))
+        .route("/api/v1/products", post(handlers::create_product))
+        .route("/api/v1/products", get(handlers::list_products))
+        .route("/api/v1/products/:tenant_id/:id", get(handlers::get_product))
+        .route("/api/v1/products/:tenant_id/:id", put(handlers::update_product))
+        .route("/api/v1/products/:tenant_id/:id", delete(handlers::delete_product))
         // Categories
-        .route("/api/v1/categories", post(create_category))
-        .route("/api/v1/categories", get(list_categories))
-        // Cart
-        .route("/api/v1/cart", get(get_cart))
-        .route("/api/v1/cart/items", post(add_cart_item))
-        .route("/api/v1/cart/items/:id", delete(remove_cart_item))
-        // Checkout
-        .route("/api/v1/checkout", post(create_checkout))
-        .route("/api/v1/checkout/session/:id", get(get_checkout_session))
+        .route("/api/v1/categories", post(handlers::create_category))
+        .route("/api/v1/categories", get(handlers::list_categories))
+        .route("/api/v1/categories/:tenant_id/:id", get(handlers::get_category))
+        .route("/api/v1/categories/:tenant_id/:id", put(handlers::update_category))
+        .route("/api/v1/categories/:tenant_id/:id", delete(handlers::delete_category))
         // Orders
-        .route("/api/v1/orders", get(list_orders))
-        .route("/api/v1/orders/:id", get(get_order))
-        .route("/api/v1/orders/:id/status", put(update_order_status))
+        .route("/api/v1/orders", post(handlers::create_order))
+        .route("/api/v1/orders", get(handlers::list_orders))
+        .route("/api/v1/orders/:tenant_id/:id", get(handlers::get_order))
+        .route("/api/v1/orders/:tenant_id/:id/status", put(handlers::update_order_status))
+        .route("/api/v1/orders/:tenant_id/:id/items", get(handlers::get_order_items))
         // Customers
-        .route("/api/v1/customers", get(list_customers))
-        .route("/api/v1/customers/:id", get(get_customer))
+        .route("/api/v1/customers", post(handlers::create_customer))
+        .route("/api/v1/customers", get(handlers::list_customers))
+        .route("/api/v1/customers/:tenant_id/:id", get(handlers::get_customer))
+        .route("/api/v1/customers/:tenant_id/:id", put(handlers::update_customer))
+        .route("/api/v1/customers/:tenant_id/:id", delete(handlers::delete_customer))
+        // Cart
+        .route("/api/v1/carts", post(handlers::create_cart))
+        .route("/api/v1/carts/:tenant_id/:id", get(handlers::get_cart))
+        .route("/api/v1/carts/:tenant_id/:id/items", post(handlers::add_cart_item))
+        .route("/api/v1/carts/:tenant_id/:id/items/:item_id", put(handlers::update_cart_item))
+        .route("/api/v1/carts/:tenant_id/:id/items/:item_id", delete(handlers::remove_cart_item))
+        .route("/api/v1/carts/:tenant_id/:id/coupon", post(handlers::apply_coupon))
+        .route("/api/v1/carts/:tenant_id/:id/clear", post(handlers::clear_cart))
         // Coupons
-        .route("/api/v1/coupons", post(create_coupon))
-        .route("/api/v1/coupons/validate", post(validate_coupon))
-        // Payments (Easebuzz)
-        .route("/api/v1/payments/initiate", post(initiate_payment))
-        .route("/api/v1/payments/callback", post(payment_callback))
-        // Shipping
-        .route("/api/v1/shipping/rates", get(get_shipping_rates))
-        // Tax
-        .route("/api/v1/tax/calculate", post(calculate_tax))
+        .route("/api/v1/coupons", post(handlers::create_coupon))
+        .route("/api/v1/coupons", get(handlers::list_coupons))
+        .route("/api/v1/coupons/:tenant_id/:id", get(handlers::get_coupon))
+        .route("/api/v1/coupons/:tenant_id/:id", put(handlers::update_coupon))
+        .route("/api/v1/coupons/:tenant_id/:id", delete(handlers::delete_coupon))
+        // Discounts
+        .route("/api/v1/discounts", post(handlers::create_discount))
+        .route("/api/v1/discounts", get(handlers::list_discounts))
+        .route("/api/v1/discounts/:tenant_id/:id", get(handlers::get_discount))
+        .route("/api/v1/discounts/:tenant_id/:id", put(handlers::update_discount))
+        .route("/api/v1/discounts/:tenant_id/:id", delete(handlers::delete_discount))
+        // Taxes
+        .route("/api/v1/taxes", post(handlers::create_tax))
+        .route("/api/v1/taxes", get(handlers::list_taxes))
+        .route("/api/v1/taxes/:tenant_id/:id", get(handlers::get_tax))
+        .route("/api/v1/taxes/:tenant_id/:id", put(handlers::update_tax))
+        .route("/api/v1/taxes/:tenant_id/:id", delete(handlers::delete_tax))
+        // Shipping Rates
+        .route("/api/v1/shipping-rates", post(handlers::create_shipping_rate))
+        .route("/api/v1/shipping-rates", get(handlers::list_shipping_rates))
+        .route("/api/v1/shipping-rates/:tenant_id/:id", get(handlers::get_shipping_rate))
+        .route("/api/v1/shipping-rates/:tenant_id/:id", put(handlers::update_shipping_rate))
+        .route("/api/v1/shipping-rates/:tenant_id/:id", delete(handlers::delete_shipping_rate))
+        // Invoices
+        .route("/api/v1/invoices", post(handlers::create_invoice))
+        .route("/api/v1/invoices", get(handlers::list_invoices))
+        .route("/api/v1/invoices/:tenant_id/:id", get(handlers::get_invoice))
+        .route("/api/v1/invoices/:tenant_id/:id", put(handlers::update_invoice))
+        // Payment Gateways
+        .route("/api/v1/payment-gateways", post(handlers::create_payment_gateway))
+        .route("/api/v1/payment-gateways", get(handlers::list_payment_gateways))
+        .route("/api/v1/payment-gateways/:tenant_id/:id", get(handlers::get_payment_gateway))
+        .route("/api/v1/payment-gateways/:tenant_id/:id", put(handlers::update_payment_gateway))
+        .route("/api/v1/payment-gateways/:tenant_id/:id", delete(handlers::delete_payment_gateway))
+        // Inventory
+        .route("/api/v1/inventory/:tenant_id/:product_id", get(handlers::get_inventory))
+        .route("/api/v1/inventory/:tenant_id/:product_id", put(handlers::update_inventory))
+        // Admin routes (no tenant isolation - admin sees all tenants)
+        .route("/api/v1/admin/overview", get(handlers::admin_get_overview))
+        .route("/api/v1/admin/ecommerce-module", get(handlers::admin_list_ecommerce_modules))
+        .route("/api/v1/admin/products", get(handlers::admin_list_products))
+        .route("/api/v1/admin/products/:id", get(handlers::admin_get_product))
+        .route("/api/v1/admin/customers", get(handlers::admin_list_customers))
+        .route("/api/v1/admin/orders", get(handlers::admin_list_orders))
+        .route("/api/v1/admin/coupons", get(handlers::admin_list_coupons))
+        .route("/api/v1/admin/discounts", get(handlers::admin_list_discounts))
+        .route("/api/v1/admin/discounts/:id", get(handlers::admin_get_discount))
+        .route("/api/v1/admin/taxes", get(handlers::admin_list_taxes))
+        .route("/api/v1/admin/taxes/:id", get(handlers::admin_get_tax))
+        .route("/api/v1/admin/shipping", get(handlers::admin_list_shipping))
+        .route("/api/v1/admin/shipping/:id", get(handlers::admin_get_shipping))
+        .route("/api/v1/admin/invoices", get(handlers::admin_list_invoices))
+        .route("/api/v1/admin/invoices/:id", get(handlers::admin_get_invoice))
+        .route("/api/v1/admin/payment-gateways", get(handlers::admin_list_payment_gateways))
+        .route("/api/v1/admin/payment-gateways/:id", get(handlers::admin_get_payment_gateway))
+        .route("/api/v1/admin/inventory", get(handlers::admin_list_inventory))
+        .route("/api/v1/admin/inventory/:id", get(handlers::admin_get_inventory))
+        // Tenant commerce routes (tenant-scoped)
+        .route("/api/commerce/products", get(handlers::tenant_list_products))
+        .route("/api/commerce/products/:tenant_id/:id", get(handlers::tenant_get_product))
+        .route("/api/commerce/products/:tenant_id/:id", put(handlers::tenant_update_product))
+        .route("/api/commerce/products/:tenant_id/:id", delete(handlers::tenant_delete_product))
+        .route("/api/commerce/categories", get(handlers::tenant_list_categories))
+        .route("/api/commerce/categories/:tenant_id/:id", post(handlers::tenant_create_category))
+        .route("/api/commerce/categories/:tenant_id/:id", put(handlers::tenant_update_category))
+        .route("/api/commerce/categories/:tenant_id/:id", delete(handlers::tenant_delete_category))
+        .route("/api/commerce/orders", get(handlers::tenant_list_orders))
+        .route("/api/commerce/promotions", get(handlers::tenant_list_promotions))
+        .route("/api/commerce/promotions/:tenant_id/:id", post(handlers::tenant_create_promotion))
+        .route("/api/commerce/promotions/:tenant_id/:id", put(handlers::tenant_update_promotion))
+        .route("/api/commerce/promotions/:tenant_id/:id", delete(handlers::tenant_delete_promotion))
+        .route("/api/commerce/cart", get(handlers::tenant_get_cart))
+        .route("/api/commerce/cart/items", post(handlers::tenant_add_cart_item))
+        .route("/api/commerce/checkout", post(handlers::tenant_checkout))
+        // Tenant isolation
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            tenant_isolation_middleware,
+        ))
         .with_state(state);
     
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8083")
@@ -80,47 +176,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn health_check() -> &'static str { "OK" }
-
-// Product handlers
-async fn create_product() -> &'static str { "Create product - TODO" }
-async fn list_products() -> &'static str { "List products - TODO" }
-async fn get_product() -> &'static str { "Get product - TODO" }
-async fn update_product() -> &'static str { "Update product - TODO" }
-async fn delete_product() -> &'static str { "Delete product - TODO" }
-
-// Category handlers
-async fn create_category() -> &'static str { "Create category - TODO" }
-async fn list_categories() -> &'static str { "List categories - TODO" }
-
-// Cart handlers
-async fn get_cart() -> &'static str { "Get cart - TODO" }
-async fn add_cart_item() -> &'static str { "Add cart item - TODO" }
-async fn remove_cart_item() -> &'static str { "Remove cart item - TODO" }
-
-// Checkout handlers
-async fn create_checkout() -> &'static str { "Create checkout - TODO" }
-async fn get_checkout_session() -> &'static str { "Get checkout session - TODO" }
-
-// Order handlers
-async fn list_orders() -> &'static str { "List orders - TODO" }
-async fn get_order() -> &'static str { "Get order - TODO" }
-async fn update_order_status() -> &'static str { "Update order status - TODO" }
-
-// Customer handlers
-async fn list_customers() -> &'static str { "List customers - TODO" }
-async fn get_customer() -> &'static str { "Get customer - TODO" }
-
-// Coupon handlers
-async fn create_coupon() -> &'static str { "Create coupon - TODO" }
-async fn validate_coupon() -> &'static str { "Validate coupon - TODO" }
-
-// Payment handlers
-async fn initiate_payment() -> &'static str { "Initiate payment - TODO" }
-async fn payment_callback() -> &'static str { "Payment callback - TODO" }
-
-// Shipping handlers
-async fn get_shipping_rates() -> &'static str { "Get shipping rates - TODO" }
-
-// Tax handlers
-async fn calculate_tax() -> &'static str { "Calculate tax - TODO" }
+async fn health_check() -> &'static str {
+    "OK"
+}

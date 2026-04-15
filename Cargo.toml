@@ -7,9 +7,15 @@ edition = "2021"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono"] }
-uuid = { version = "1", features = ["v4"] }
+serde_json = "1"
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenvy = "0.15"
+thiserror = "1"
+validator = { version = "0.16", features = ["derive"] }
+
+[dev-dependencies]
+tokio-test = "0.4"

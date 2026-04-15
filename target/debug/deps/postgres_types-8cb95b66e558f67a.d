@@ -1,0 +1,9 @@
+/Users/ashwin/Tracewebstudio/repos/tracewebstudio-commerce-backend/target/debug/deps/postgres_types-8cb95b66e558f67a.d: /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/lib.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/pg_lsn.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/private.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/special.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/type_gen.rs
+
+/Users/ashwin/Tracewebstudio/repos/tracewebstudio-commerce-backend/target/debug/deps/libpostgres_types-8cb95b66e558f67a.rmeta: /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/lib.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/pg_lsn.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/private.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/special.rs /Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/type_gen.rs
+
+/Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/lib.rs:
+/Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/pg_lsn.rs:
+/Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/private.rs:
+/Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/special.rs:
+/Users/ashwin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/postgres-types-0.2.13/src/type_gen.rs:
