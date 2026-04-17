@@ -12,6 +12,10 @@ pub mod payment_gateways;
 pub mod inventory;
 pub mod admin;
 pub mod tenant_commerce;
+pub mod public_products;
+pub mod public_cart;
+pub mod public_checkout;
+pub mod public_categories;
 
 pub use products::*;
 pub use categories::*;
@@ -27,3 +31,7 @@ pub use payment_gateways::*;
 pub use inventory::*;
 pub use admin::*;
 pub use tenant_commerce::*;
+pub use public_products::*;
+pub use public_cart::*;
+pub use public_checkout::*;
+pub use public_categories::*;

@@ -156,6 +156,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/commerce/cart", get(handlers::tenant_get_cart))
         .route("/api/commerce/cart/items", post(handlers::tenant_add_cart_item))
         .route("/api/commerce/checkout", post(handlers::tenant_checkout))
+        // Public API routes (no tenant isolation - public website)
+        .route("/api/v1/public/products", get(handlers::list_public_products))
+        .route("/api/v1/public/products/:id", get(handlers::get_public_product))
+        .route("/api/v1/public/cart", get(handlers::get_public_cart))
+        .route("/api/v1/public/cart", post(handlers::add_to_public_cart))
+        .route("/api/v1/public/checkout/place-order", post(handlers::place_public_order))
+        .route("/api/v1/public/categories", get(handlers::list_public_categories))
         // Tenant isolation
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
